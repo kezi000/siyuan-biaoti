@@ -140,17 +140,14 @@ export default class AITitleAssistant extends Plugin {
             }
         });
 
-        const testButton = document.createElement("button");
-        testButton.className = "b3-button b3-button--outline fn__flex-center fn__size150";
-        testButton.textContent = this.i18n.testConnection;
-        testButton.addEventListener("click", () => {
-            void this.testConnection(testButton);
-        });
         setting.addItem({
             title: this.i18n.settingApiKey,
+            direction: "row",
             description: this.i18n.settingApiKeyDesc,
-            actionElement: testButton,
             createActionElement: () => {
+                const container = document.createElement("div");
+                container.className = "ai-title-assistant__api-row";
+
                 const input = document.createElement("input");
                 input.type = "password";
                 input.autocomplete = "off";
@@ -161,7 +158,16 @@ export default class AITitleAssistant extends Plugin {
                     this.config.apiKey = input.value.trim();
                     this.scheduleSave();
                 });
-                return input;
+
+                const testButton = document.createElement("button");
+                testButton.className = "b3-button b3-button--outline fn__flex-center fn__size120";
+                testButton.textContent = this.i18n.testConnection;
+                testButton.addEventListener("click", () => {
+                    void this.testConnection(testButton);
+                });
+
+                container.append(input, testButton);
+                return container;
             }
         });
 
@@ -492,6 +498,43 @@ export default class AITitleAssistant extends Plugin {
         return this.config.promptTemplate.replace(/{{\s*(content|language|tone)\s*}}/g, (_match, key) => replacements[key] || "");
     }
 
+    private extractMessageContent(body: any) {
+        const choice = body?.choices?.[0];
+        if (!choice) {
+            return undefined;
+        }
+        const message = choice.message ?? choice.delta;
+        if (!message) {
+            return typeof choice.text === "string" ? choice.text : undefined;
+        }
+        const content = message.content;
+        if (typeof content === "string") {
+            return content;
+        }
+        if (Array.isArray(content)) {
+            const combined = content.map((chunk) => {
+                if (typeof chunk === "string") {
+                    return chunk;
+                }
+                if (chunk && typeof chunk.text === "string") {
+                    return chunk.text;
+                }
+                if (chunk && typeof chunk.value === "string") {
+                    return chunk.value;
+                }
+                return "";
+            }).join("");
+            return combined;
+        }
+        if (content && typeof content.text === "string") {
+            return content.text;
+        }
+        if (typeof choice.text === "string") {
+            return choice.text;
+        }
+        return undefined;
+    }
+
     private async requestTitle(prompt: string) {
         this.abortController = new AbortController();
         const payload = {
@@ -520,11 +563,15 @@ export default class AITitleAssistant extends Plugin {
         if (!response.ok) {
             throw new Error(body.error?.message || response.statusText);
         }
-        const title = body.choices?.[0]?.message?.content?.trim();
+        const rawContent = this.extractMessageContent(body);
+        if (!rawContent) {
+            throw new Error(this.i18n.emptyResponse);
+        }
+        const title = rawContent.replace(/\s+/g, " ").trim();
         if (!title) {
             throw new Error(this.i18n.emptyResponse);
         }
-        return title.replace(/\s+/g, " ").trim();
+        return title;
     }
 
     private showResultDialog(title: string, editor: any) {
@@ -612,3 +659,4 @@ export default class AITitleAssistant extends Plugin {
 </symbol>`);
     }
 }
+// Model: GPT-5 (Codex)

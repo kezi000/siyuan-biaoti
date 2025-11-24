@@ -31,6 +31,15 @@
     min-width: 120px;
   }
 
+  &__api-row {
+    display: flex;
+    gap: 12px;
+
+    .b3-text-field {
+      flex: 1;
+    }
+  }
+
   &__loading svg {
     animation: ai-title-spin 1s linear infinite;
   }
