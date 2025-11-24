@@ -3,6 +3,7 @@ import {
     Plugin,
     Setting,
     fetchPost,
+    getActiveEditor as getNativeActiveEditor,
     getAllEditor,
     getFrontend,
     showMessage
@@ -45,6 +46,12 @@ const TONE_INSTRUCTIONS: Record<TonePreset, string> = {
 const PROVIDER_IDS = Object.keys(PROVIDER_METADATA) as ProviderId[];
 
 const DEFAULT_LANGUAGE = "Chinese (Simplified)";
+
+interface ResolvedDocument {
+    id: string;
+    path?: string;
+    blockId?: string;
+}
 
 function cloneProviders(): ProviderCredentialMap {
     const snapshot: ProviderCredentialMap = {};
@@ -94,7 +101,7 @@ export default class AITitleAssistant extends Plugin {
     private fallbackListContainer?: HTMLElement;
     private lastActiveRootId?: string;
     private interactionTrackingRegistered = false;
-    private pendingDocumentId?: string;
+    private activeDocument?: {id: string; path?: string; blockId?: string};
     private readonly selectionTrackingHandler = () => {
         this.updateActiveEditorFromNode(window.getSelection()?.anchorNode ?? null);
     };
@@ -495,7 +502,7 @@ export default class AITitleAssistant extends Plugin {
             showMessage(this.i18n.needDoc);
             return;
         }
-        this.pendingDocumentId = docInfo.id;
+        this.activeDocument = docInfo;
         const context = this.extractContext(editor);
         if (!context) {
             showMessage(this.i18n.contextUnavailable);
@@ -507,7 +514,7 @@ export default class AITitleAssistant extends Plugin {
         this.setLoadingState(true);
         try {
             const title = await this.requestTitle(prompt);
-            this.showResultDialog(title, editor);
+            this.showResultDialog(title, editor, docInfo);
         } catch (error) {
             showMessage(this.i18n.requestFailed.replace("${message}", error instanceof Error ? error.message : String(error)));
         } finally {
@@ -518,6 +525,10 @@ export default class AITitleAssistant extends Plugin {
     }
 
     private getActiveEditor() {
+        const nativeEditor = getNativeActiveEditor?.();
+        if (nativeEditor) {
+            return this.setLastActiveEditor(nativeEditor);
+        }
         const editors = getAllEditor();
         if (!editors || editors.length === 0) {
             showMessage(this.i18n.needDoc);
@@ -701,7 +712,7 @@ export default class AITitleAssistant extends Plugin {
                 return block;
             }
         }
-        return root.querySelector("[data-node-id]") as HTMLElement | null;
+        return null;
     }
 
     private getCurrentBlockId(editor: any) {
@@ -765,10 +776,11 @@ export default class AITitleAssistant extends Plugin {
         throw new Error(errors.join(" | "));
     }
 
-    private showResultDialog(title: string, editor: any) {
+    private showResultDialog(title: string, editor: any, docInfo?: ResolvedDocument) {
         const dialog = new Dialog({
             title: this.i18n.dialogTitle,
             content: `<div class="b3-dialog__content ai-title-assistant__dialog">
+    <div class="ai-title-assistant__doc-path" id="ai-title-doc-path"></div>
     <div class="ai-title-assistant__hint">${this.i18n.dialogHint}</div>
     <div class="ai-title-assistant__preview" id="ai-title-preview"></div>
 </div>
@@ -782,6 +794,22 @@ export default class AITitleAssistant extends Plugin {
         });
         const preview = dialog.element.querySelector("#ai-title-preview") as HTMLElement;
         preview.textContent = title;
+        const docPath = dialog.element.querySelector("#ai-title-doc-path") as HTMLElement;
+        if (docPath) {
+            const resolved = docInfo?.path?.trim() || this.activeDocument?.path?.trim();
+            if (resolved) {
+                const label = `${this.i18n.currentDocLabel}: ${resolved}`;
+                docPath.textContent = label;
+                docPath.title = resolved;
+            } else {
+                const docId = docInfo?.id || this.activeDocument?.id;
+                const fallback = docId
+                    ? this.i18n.currentDocUnknownWithId.replace("${id}", docId)
+                    : this.i18n.currentDocUnknown;
+                docPath.textContent = fallback;
+                docPath.title = fallback;
+            }
+        }
 
         dialog.element.querySelectorAll("button[data-action]").forEach((btn) => {
             btn.addEventListener("click", async (event) => {
@@ -815,7 +843,7 @@ export default class AITitleAssistant extends Plugin {
     }
 
     private async applyTitle(editor: any, title: string) {
-        const docId = this.pendingDocumentId || editor?.protyle?.block?.rootID;
+        const docId = this.activeDocument?.id || editor?.protyle?.block?.rootID;
         if (!docId) {
             showMessage(this.i18n.needDoc);
             return;
@@ -1059,7 +1087,7 @@ export default class AITitleAssistant extends Plugin {
         return resolveProviderCredential(providerId, this.config.providers[providerId]);
     }
 
-    private async resolveActiveDocument(editor: any) {
+    private async resolveActiveDocument(editor: any): Promise<ResolvedDocument | undefined> {
         const blockId = this.getCurrentBlockId(editor) || editor?.protyle?.block?.rootID;
         if (!blockId) {
             return undefined;
@@ -1069,16 +1097,28 @@ export default class AITitleAssistant extends Plugin {
                 id: blockId,
                 excludeTypes: []
             });
-            const docEntry = breadcrumb?.find((item) => item.type === "NodeDocument");
+            const docEntry = breadcrumb?.find((item) => item.type === "NodeDocument") ?? breadcrumb?.[0];
             if (docEntry?.id) {
+                const resolved: ResolvedDocument = {
+                    id: docEntry.id,
+                    path: docEntry.name ?? "",
+                    blockId
+                };
                 this.lastActiveRootId = docEntry.id;
-                return docEntry;
+                this.activeDocument = resolved;
+                return resolved;
             }
         } catch (error) {
             console.warn("Failed to resolve active document", error);
         }
         if (editor?.protyle?.block?.rootID) {
-            return {id: editor.protyle.block.rootID, name: "", type: "NodeDocument"};
+            const fallback: ResolvedDocument = {
+                id: editor.protyle.block.rootID,
+                path: this.activeDocument?.path,
+                blockId
+            };
+            this.activeDocument = fallback;
+            return fallback;
         }
         return undefined;
     }
