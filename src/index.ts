@@ -94,6 +94,7 @@ export default class AITitleAssistant extends Plugin {
     private fallbackListContainer?: HTMLElement;
     private lastActiveRootId?: string;
     private interactionTrackingRegistered = false;
+    private pendingDocumentId?: string;
     private readonly selectionTrackingHandler = () => {
         this.updateActiveEditorFromNode(window.getSelection()?.anchorNode ?? null);
     };
@@ -489,6 +490,12 @@ export default class AITitleAssistant extends Plugin {
         if (!editor) {
             return;
         }
+        const docInfo = await this.resolveActiveDocument(editor);
+        if (!docInfo) {
+            showMessage(this.i18n.needDoc);
+            return;
+        }
+        this.pendingDocumentId = docInfo.id;
         const context = this.extractContext(editor);
         if (!context) {
             showMessage(this.i18n.contextUnavailable);
@@ -639,8 +646,7 @@ export default class AITitleAssistant extends Plugin {
         if (!root) {
             return "";
         }
-        const seedNode = window.getSelection()?.anchorNode ?? document.activeElement;
-        const block = this.findBlockElement(seedNode, root);
+        const block = this.getActiveBlockElement(editor);
         if (!block) {
             return "";
         }
@@ -678,6 +684,15 @@ export default class AITitleAssistant extends Plugin {
         return [...before, centerText, ...after].join("\n").trim();
     }
 
+    private getActiveBlockElement(editor: any) {
+        const root = editor?.protyle?.wysiwyg?.element as HTMLElement | undefined;
+        if (!root) {
+            return null;
+        }
+        const seedNode = window.getSelection()?.anchorNode ?? document.activeElement;
+        return this.findBlockElement(seedNode, root);
+    }
+
     private findBlockElement(seedNode: Node | Element | null, root: HTMLElement) {
         const element = this.resolveElementFromNode(seedNode);
         if (element && root.contains(element)) {
@@ -687,6 +702,11 @@ export default class AITitleAssistant extends Plugin {
             }
         }
         return root.querySelector("[data-node-id]") as HTMLElement | null;
+    }
+
+    private getCurrentBlockId(editor: any) {
+        const block = this.getActiveBlockElement(editor);
+        return block?.dataset.nodeId;
     }
 
     private getDocumentText(editor: any) {
@@ -795,7 +815,7 @@ export default class AITitleAssistant extends Plugin {
     }
 
     private async applyTitle(editor: any, title: string) {
-        const docId = editor?.protyle?.block?.rootID;
+        const docId = this.pendingDocumentId || editor?.protyle?.block?.rootID;
         if (!docId) {
             showMessage(this.i18n.needDoc);
             return;
@@ -1037,6 +1057,30 @@ export default class AITitleAssistant extends Plugin {
 
     private getProviderCredential(providerId: ProviderId) {
         return resolveProviderCredential(providerId, this.config.providers[providerId]);
+    }
+
+    private async resolveActiveDocument(editor: any) {
+        const blockId = this.getCurrentBlockId(editor) || editor?.protyle?.block?.rootID;
+        if (!blockId) {
+            return undefined;
+        }
+        try {
+            const breadcrumb = await this.fetchPostAsync<Array<{id: string; name: string; type: string}>>("/api/block/getBlockBreadcrumb", {
+                id: blockId,
+                excludeTypes: []
+            });
+            const docEntry = breadcrumb?.find((item) => item.type === "NodeDocument");
+            if (docEntry?.id) {
+                this.lastActiveRootId = docEntry.id;
+                return docEntry;
+            }
+        } catch (error) {
+            console.warn("Failed to resolve active document", error);
+        }
+        if (editor?.protyle?.block?.rootID) {
+            return {id: editor.protyle.block.rootID, name: "", type: "NodeDocument"};
+        }
+        return undefined;
     }
 
     private resolveProviderOrder() {
