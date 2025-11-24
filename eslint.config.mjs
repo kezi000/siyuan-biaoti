@@ -19,6 +19,8 @@ export default [{
         "dist",
         "node_modules",
         "index.js",
+        "app.js",
+        "package/**",
     ],
 }, ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"), {
     plugins: {

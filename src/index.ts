@@ -8,25 +8,24 @@ import {
     showMessage
 } from "siyuan";
 import "./index.scss";
+import {
+    ContextStrategy,
+    ProviderCredential,
+    ProviderCredentialMap,
+    ProviderId,
+    TitleConfig,
+    TonePreset
+} from "./types";
+import {
+    DEFAULT_PROVIDER_CREDENTIALS,
+    PROVIDER_METADATA,
+    resolveProviderCredential
+} from "./providers/base/ProviderConfig";
+import {LLMProviderFactory} from "./providers/factory/LLMProviderFactory";
+import {LLMProviderError} from "./providers/base/LLMProvider";
+import {RetryHandler} from "./providers/base/RetryHandler";
 
 const STORAGE_KEY = "ai-title-assistant";
-
-type ContextStrategy = "auto" | "selection" | "document";
-type TonePreset = "balanced" | "catchy" | "technical" | "narrative";
-
-interface TitleConfig {
-    apiKey: string;
-    baseUrl: string;
-    model: string;
-    temperature: number;
-    topP: number;
-    maxTokens: number;
-    language: string;
-    tone: TonePreset;
-    contextStrategy: ContextStrategy;
-    contextMaxChars: number;
-    promptTemplate: string;
-}
 
 const DEFAULT_PROMPT = [
     "Read the following content and craft the most compelling title.",
@@ -36,20 +35,6 @@ const DEFAULT_PROMPT = [
     "{{content}}"
 ].join("\n");
 
-const DEFAULT_CONFIG: TitleConfig = {
-    apiKey: "",
-    baseUrl: "https://api.openai.com/v1",
-    model: "gpt-4o-mini",
-    temperature: 0.5,
-    topP: 0.9,
-    maxTokens: 64,
-    language: "Chinese (Simplified)",
-    tone: "balanced",
-    contextStrategy: "auto",
-    contextMaxChars: 1200,
-    promptTemplate: DEFAULT_PROMPT
-};
-
 const TONE_INSTRUCTIONS: Record<TonePreset, string> = {
     balanced: "balanced and professional",
     catchy: "attention-grabbing and energetic",
@@ -57,16 +42,59 @@ const TONE_INSTRUCTIONS: Record<TonePreset, string> = {
     narrative: "story-driven and warm"
 };
 
+const PROVIDER_IDS = Object.keys(PROVIDER_METADATA) as ProviderId[];
+
+const DEFAULT_LANGUAGE = "Chinese (Simplified)";
+
+function cloneProviders(): ProviderCredentialMap {
+    const snapshot: ProviderCredentialMap = {};
+    PROVIDER_IDS.forEach((id) => {
+        snapshot[id] = {...DEFAULT_PROVIDER_CREDENTIALS[id]};
+    });
+    return snapshot;
+}
+
+function createDefaultConfig(): TitleConfig {
+    return {
+        providerPreferences: {
+            primary: "openai",
+            fallbacks: PROVIDER_IDS.filter((id) => id !== "openai"),
+            autoSwitchOnSuccess: true
+        },
+        providers: cloneProviders(),
+        retryPolicy: {
+            maxAttempts: 2,
+            baseDelayMs: 800,
+            exponential: true,
+            timeoutMs: 5000
+        },
+        usage: {
+            totalRequests: 0,
+            providerFailureCounts: {}
+        },
+        temperature: 0.5,
+        topP: 0.9,
+        maxTokens: 64,
+        language: DEFAULT_LANGUAGE,
+        tone: "balanced",
+        contextStrategy: "auto",
+        contextMaxChars: 1200,
+        promptTemplate: DEFAULT_PROMPT
+    };
+}
+
 export default class AITitleAssistant extends Plugin {
-    private config: TitleConfig = {...DEFAULT_CONFIG};
+    private config: TitleConfig = createDefaultConfig();
     private topBarElement?: HTMLElement;
     private isMobile = false;
     private isGenerating = false;
     private saveTimer?: number;
     private abortController?: AbortController;
+    private providerCredentialContainer?: HTMLElement;
+    private fallbackListContainer?: HTMLElement;
 
     async onload() {
-        this.data[STORAGE_KEY] = {...DEFAULT_CONFIG};
+        this.data[STORAGE_KEY] = createDefaultConfig();
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
         await this.loadConfig();
@@ -96,11 +124,11 @@ export default class AITitleAssistant extends Plugin {
     private async loadConfig() {
         try {
             const saved = await this.loadData<TitleConfig>(STORAGE_KEY);
-            this.config = {...DEFAULT_CONFIG, ...(saved ?? {})};
+            this.config = this.normalizeConfig(saved ?? undefined);
             this.data[STORAGE_KEY] = this.config;
         } catch (error) {
             console.warn("Failed to load configuration, fallback to defaults", error);
-            this.config = {...DEFAULT_CONFIG};
+            this.config = createDefaultConfig();
         }
     }
 
@@ -123,68 +151,44 @@ export default class AITitleAssistant extends Plugin {
         this.setting = setting;
 
         setting.addItem({
-            title: this.i18n.settingApiBaseUrl,
-            direction: "row",
-            description: this.i18n.settingApiBaseUrlDesc,
-            createActionElement: () => {
-                const input = document.createElement("input");
-                input.type = "url";
-                input.className = "b3-text-field fn__block";
-                input.placeholder = DEFAULT_CONFIG.baseUrl;
-                input.value = this.config.baseUrl;
-                input.addEventListener("change", () => {
-                    this.config.baseUrl = input.value.trim() || DEFAULT_CONFIG.baseUrl;
+            title: this.i18n.settingProvider,
+            description: this.i18n.settingProviderDesc,
+            createActionElement: () => this.createSelect<ProviderId>({
+                value: this.config.providerPreferences.primary,
+                options: PROVIDER_IDS.map((id) => ({value: id, label: PROVIDER_METADATA[id].label})),
+                onChange: (value) => {
+                    this.config.providerPreferences.primary = value;
+                    this.ensureProviderConfig(value);
+                    this.refreshProviderForms();
                     this.scheduleSave();
-                });
-                return input;
+                }
+            })
+        });
+
+        setting.addItem({
+            title: this.i18n.settingFallbackProviders,
+            description: this.i18n.settingFallbackProvidersDesc,
+            createActionElement: () => {
+                const wrapper = document.createElement("div");
+                wrapper.className = "ai-title-assistant__fallback-section";
+                const list = document.createElement("div");
+                list.className = "ai-title-assistant__fallback-list";
+                this.fallbackListContainer = list;
+                this.renderFallbackOptions();
+                wrapper.append(list, this.createAutoSwitchToggle());
+                return wrapper;
             }
         });
 
         setting.addItem({
-            title: this.i18n.settingApiKey,
-            direction: "row",
-            description: this.i18n.settingApiKeyDesc,
+            title: this.i18n.settingProviderCredentials,
+            description: this.i18n.settingProviderCredentialsDesc,
             createActionElement: () => {
                 const container = document.createElement("div");
-                container.className = "ai-title-assistant__api-row";
-
-                const input = document.createElement("input");
-                input.type = "password";
-                input.autocomplete = "off";
-                input.className = "b3-text-field fn__block";
-                input.placeholder = this.i18n.settingApiKeyPlaceholder;
-                input.value = this.config.apiKey;
-                input.addEventListener("input", () => {
-                    this.config.apiKey = input.value.trim();
-                    this.scheduleSave();
-                });
-
-                const testButton = document.createElement("button");
-                testButton.className = "b3-button b3-button--outline fn__flex-center fn__size120";
-                testButton.textContent = this.i18n.testConnection;
-                testButton.addEventListener("click", () => {
-                    void this.testConnection(testButton);
-                });
-
-                container.append(input, testButton);
+                container.className = "ai-title-assistant__provider-config";
+                this.providerCredentialContainer = container;
+                this.refreshProviderForms();
                 return container;
-            }
-        });
-
-        setting.addItem({
-            title: this.i18n.settingModel,
-            direction: "row",
-            description: this.i18n.settingModelDesc,
-            createActionElement: () => {
-                const input = document.createElement("input");
-                input.className = "b3-text-field fn__block";
-                input.placeholder = DEFAULT_CONFIG.model;
-                input.value = this.config.model;
-                input.addEventListener("change", () => {
-                    this.config.model = input.value.trim() || DEFAULT_CONFIG.model;
-                    this.scheduleSave();
-                });
-                return input;
             }
         });
 
@@ -243,10 +247,10 @@ export default class AITitleAssistant extends Plugin {
             createActionElement: () => {
                 const input = document.createElement("input");
                 input.className = "b3-text-field fn__block";
-                input.placeholder = DEFAULT_CONFIG.language;
+                input.placeholder = DEFAULT_LANGUAGE;
                 input.value = this.config.language;
                 input.addEventListener("change", () => {
-                    this.config.language = input.value.trim() || DEFAULT_CONFIG.language;
+                    this.config.language = input.value.trim() || DEFAULT_LANGUAGE;
                     this.scheduleSave();
                 });
                 return input;
@@ -322,6 +326,51 @@ export default class AITitleAssistant extends Plugin {
                 return textarea;
             }
         });
+
+        setting.addItem({
+            title: this.i18n.settingRetryPolicy,
+            description: this.i18n.settingRetryPolicyDesc,
+            createActionElement: () => {
+                const container = document.createElement("div");
+                container.className = "ai-title-assistant__retry-grid";
+                const maxAttempts = this.createNumberInput({
+                    value: this.config.retryPolicy.maxAttempts,
+                    min: 1,
+                    max: 5,
+                    step: 1,
+                    onCommit: (value) => {
+                        this.config.retryPolicy.maxAttempts = value;
+                        this.scheduleSave();
+                    }
+                });
+                const baseDelay = this.createNumberInput({
+                    value: this.config.retryPolicy.baseDelayMs,
+                    min: 100,
+                    max: 5000,
+                    step: 50,
+                    onCommit: (value) => {
+                        this.config.retryPolicy.baseDelayMs = value;
+                        this.scheduleSave();
+                    }
+                });
+                const timeout = this.createNumberInput({
+                    value: this.config.retryPolicy.timeoutMs,
+                    min: 500,
+                    max: 20000,
+                    step: 500,
+                    onCommit: (value) => {
+                        this.config.retryPolicy.timeoutMs = value;
+                        this.scheduleSave();
+                    }
+                });
+                container.append(
+                    this.wrapLabeledField(this.i18n.settingRetryMaxAttempts, maxAttempts),
+                    this.wrapLabeledField(this.i18n.settingRetryBaseDelay, baseDelay),
+                    this.wrapLabeledField(this.i18n.settingRetryTimeout, timeout)
+                );
+                return container;
+            }
+        });
     }
 
     private createNumberInput(options: {value: number; min: number; max: number; step: number; onCommit: (value: number) => void;}): HTMLElement {
@@ -381,20 +430,10 @@ export default class AITitleAssistant extends Plugin {
         }
     }
 
-    private getSanitizedBaseUrl() {
-        return this.config.baseUrl.replace(/\/+$/, "");
-    }
-
-    private buildHeaders() {
-        const headers: Record<string, string> = {"Content-Type": "application/json"};
-        if (this.config.apiKey) {
-            headers.Authorization = `Bearer ${this.config.apiKey}`;
-        }
-        return headers;
-    }
-
     private async testConnection(button: HTMLButtonElement) {
-        if (!this.config.apiKey) {
+        const providerId = this.config.providerPreferences.primary;
+        const credential = this.getProviderCredential(providerId);
+        if (PROVIDER_METADATA[providerId].requiresApiKey && !credential.apiKey) {
             showMessage(this.i18n.needApiKey);
             return;
         }
@@ -402,14 +441,8 @@ export default class AITitleAssistant extends Plugin {
         const originalText = button.textContent;
         button.textContent = this.i18n.testingConnection;
         try {
-            const response = await fetch(`${this.getSanitizedBaseUrl()}/models`, {
-                method: "GET",
-                headers: this.buildHeaders()
-            });
-            if (!response.ok) {
-                const errorBody = await response.json().catch(() => ({}));
-                throw new Error(errorBody.error?.message || response.statusText);
-            }
+            const provider = LLMProviderFactory.get(providerId);
+            await provider.testConnection(credential);
             showMessage(this.i18n.testSuccess);
         } catch (error) {
             showMessage(this.i18n.testFailed.replace("${message}", error instanceof Error ? error.message : String(error)));
@@ -421,10 +454,6 @@ export default class AITitleAssistant extends Plugin {
 
     private async handleGenerateTitle() {
         if (this.isGenerating) {
-            return;
-        }
-        if (!this.config.apiKey) {
-            showMessage(this.i18n.needApiKey);
             return;
         }
         const editor = this.getActiveEditor();
@@ -492,86 +521,44 @@ export default class AITitleAssistant extends Plugin {
     private renderPrompt(context: string) {
         const replacements: Record<string, string> = {
             content: context,
-            language: this.config.language || DEFAULT_CONFIG.language,
+            language: this.config.language || DEFAULT_LANGUAGE,
             tone: TONE_INSTRUCTIONS[this.config.tone] || TONE_INSTRUCTIONS.balanced
         };
         return this.config.promptTemplate.replace(/{{\s*(content|language|tone)\s*}}/g, (_match, key) => replacements[key] || "");
     }
 
-    private extractMessageContent(body: any) {
-        const choice = body?.choices?.[0];
-        if (!choice) {
-            return undefined;
-        }
-        const message = choice.message ?? choice.delta;
-        if (!message) {
-            return typeof choice.text === "string" ? choice.text : undefined;
-        }
-        const content = message.content;
-        if (typeof content === "string") {
-            return content;
-        }
-        if (Array.isArray(content)) {
-            const combined = content.map((chunk) => {
-                if (typeof chunk === "string") {
-                    return chunk;
-                }
-                if (chunk && typeof chunk.text === "string") {
-                    return chunk.text;
-                }
-                if (chunk && typeof chunk.value === "string") {
-                    return chunk.value;
-                }
-                return "";
-            }).join("");
-            return combined;
-        }
-        if (content && typeof content.text === "string") {
-            return content.text;
-        }
-        if (typeof choice.text === "string") {
-            return choice.text;
-        }
-        return undefined;
-    }
-
     private async requestTitle(prompt: string) {
         this.abortController = new AbortController();
-        const payload = {
-            model: this.config.model,
-            messages: [
-                {
-                    role: "system",
-                    content: `You are an experienced writing assistant that crafts ${TONE_INSTRUCTIONS[this.config.tone]} titles in ${this.config.language}. Output only the final title.`
-                },
-                {role: "user", content: prompt}
-            ],
-            temperature: this.config.temperature,
-            top_p: this.config.topP,
-            max_tokens: this.config.maxTokens,
-            stream: false
-        };
-
-        const response = await fetch(`${this.getSanitizedBaseUrl()}/chat/completions`, {
-            method: "POST",
-            headers: this.buildHeaders(),
-            body: JSON.stringify(payload),
-            signal: this.abortController.signal
-        });
-
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw new Error(body.error?.message || response.statusText);
+        const systemPrompt = `You are an experienced writing assistant that crafts ${TONE_INSTRUCTIONS[this.config.tone]} titles in ${this.config.language}. Output only the final title.`;
+        const providerOrder = this.resolveProviderOrder();
+        const errors: string[] = [];
+        for (const providerId of providerOrder) {
+            const provider = LLMProviderFactory.get(providerId);
+            const credential = this.getProviderCredential(providerId);
+            if (PROVIDER_METADATA[providerId].requiresApiKey && !credential.apiKey) {
+                errors.push(`${PROVIDER_METADATA[providerId].label}: ${this.i18n.needApiKey}`);
+                continue;
+            }
+            const retryHandler = new RetryHandler(this.config.retryPolicy);
+            try {
+                const title = await retryHandler.execute(() => provider.generateTitle({
+                    config: credential,
+                    prompt,
+                    systemPrompt,
+                    temperature: this.config.temperature,
+                    topP: this.config.topP,
+                    maxTokens: this.config.maxTokens,
+                    abortSignal: this.abortController?.signal
+                }), {signal: this.abortController?.signal});
+                this.handleProviderSuccess(providerId);
+                return title;
+            } catch (error) {
+                this.handleProviderFailure(providerId, error);
+                const message = error instanceof Error ? error.message : String(error);
+                errors.push(`${PROVIDER_METADATA[providerId]?.label || providerId}: ${message}`);
+            }
         }
-        const rawContent = this.extractMessageContent(body);
-        if (!rawContent) {
-            throw new Error(this.i18n.emptyResponse);
-        }
-        const title = rawContent.replace(/\s+/g, " ").trim();
-        if (!title) {
-            throw new Error(this.i18n.emptyResponse);
-        }
-        return title;
+        throw new Error(errors.join(" | "));
     }
 
     private showResultDialog(title: string, editor: any) {
@@ -651,6 +638,243 @@ export default class AITitleAssistant extends Plugin {
         }
         this.topBarElement.classList.toggle("ai-title-assistant__loading", isLoading);
         this.topBarElement.setAttribute("aria-busy", isLoading ? "true" : "false");
+    }
+
+    private normalizeConfig(saved?: Partial<TitleConfig> & Record<string, any>): TitleConfig {
+        const base = createDefaultConfig();
+        if (!saved) {
+            return base;
+        }
+        const providers: Record<string, ProviderCredential> = {...base.providers};
+        if (saved.providers) {
+            Object.entries(saved.providers).forEach(([key, value]) => {
+                providers[key] = {
+                    ...(providers[key] ?? {}),
+                    ...(value as ProviderCredential)
+                };
+            });
+        }
+        if (saved.apiKey || saved.baseUrl || saved.model) {
+            providers.openai = {
+                ...providers.openai,
+                apiKey: saved.apiKey ?? providers.openai.apiKey,
+                baseUrl: saved.baseUrl ?? providers.openai.baseUrl,
+                model: saved.model ?? providers.openai.model
+            };
+        }
+        const normalized: TitleConfig = {
+            ...base,
+            ...saved,
+            providers,
+            providerPreferences: {
+                ...base.providerPreferences,
+                ...(saved.providerPreferences ?? {}),
+                primary: this.isValidProvider(saved.providerPreferences?.primary) ? saved.providerPreferences!.primary : base.providerPreferences.primary,
+                fallbacks: this.dedupeProviders(saved.providerPreferences?.fallbacks ?? base.providerPreferences.fallbacks)
+            },
+            retryPolicy: {
+                ...base.retryPolicy,
+                ...(saved.retryPolicy ?? {})
+            },
+            usage: {
+                ...base.usage,
+                ...(saved.usage ?? {}),
+                providerFailureCounts: {
+                    ...base.usage.providerFailureCounts,
+                    ...(saved.usage?.providerFailureCounts ?? {})
+                }
+            },
+            temperature: saved.temperature ?? base.temperature,
+            topP: saved.topP ?? base.topP,
+            maxTokens: saved.maxTokens ?? base.maxTokens,
+            language: saved.language ?? base.language,
+            tone: saved.tone ?? base.tone,
+            contextStrategy: saved.contextStrategy ?? base.contextStrategy,
+            contextMaxChars: saved.contextMaxChars ?? base.contextMaxChars,
+            promptTemplate: saved.promptTemplate ?? base.promptTemplate
+        };
+        return normalized;
+    }
+
+    private isValidProvider(provider?: ProviderId) {
+        return provider ? PROVIDER_IDS.includes(provider) : false;
+    }
+
+    private dedupeProviders(list: ProviderId[]) {
+        const unique: ProviderId[] = [];
+        list.forEach((id) => {
+            if (this.isValidProvider(id) && !unique.includes(id)) {
+                unique.push(id);
+            }
+        });
+        return unique;
+    }
+
+    private ensureProviderConfig(providerId: ProviderId) {
+        if (!this.config.providers[providerId]) {
+            this.config.providers[providerId] = {...DEFAULT_PROVIDER_CREDENTIALS[providerId]};
+        }
+    }
+
+    private renderFallbackOptions() {
+        if (!this.fallbackListContainer) {
+            return;
+        }
+        this.fallbackListContainer.innerHTML = "";
+        const primary = this.config.providerPreferences.primary;
+        const selected = new Set(this.config.providerPreferences.fallbacks);
+        PROVIDER_IDS.filter((id) => id !== primary).forEach((id) => {
+            const label = document.createElement("label");
+            label.className = "ai-title-assistant__fallback-option";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = selected.has(id);
+            checkbox.addEventListener("change", () => {
+                this.toggleFallback(id, checkbox.checked);
+            });
+            const span = document.createElement("span");
+            span.textContent = PROVIDER_METADATA[id].label;
+            label.append(checkbox, span);
+            this.fallbackListContainer?.appendChild(label);
+        });
+    }
+
+    private createAutoSwitchToggle() {
+        const label = document.createElement("label");
+        label.className = "ai-title-assistant__inline-toggle";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = this.config.providerPreferences.autoSwitchOnSuccess;
+        checkbox.addEventListener("change", () => {
+            this.config.providerPreferences.autoSwitchOnSuccess = checkbox.checked;
+            this.scheduleSave();
+        });
+        const span = document.createElement("span");
+        span.textContent = this.i18n.settingAutoSwitch;
+        label.append(checkbox, span);
+        return label;
+    }
+
+    private toggleFallback(providerId: ProviderId, enabled: boolean) {
+        const fallbacks = new Set(this.config.providerPreferences.fallbacks);
+        if (enabled) {
+            fallbacks.add(providerId);
+        } else {
+            fallbacks.delete(providerId);
+        }
+        this.config.providerPreferences.fallbacks = this.dedupeProviders(Array.from(fallbacks));
+        this.scheduleSave();
+    }
+
+    private refreshProviderForms() {
+        if (this.providerCredentialContainer) {
+            this.providerCredentialContainer.innerHTML = "";
+            this.providerCredentialContainer.appendChild(this.buildProviderCredentialFields());
+        }
+        this.renderFallbackOptions();
+    }
+
+    private buildProviderCredentialFields() {
+        const fragment = document.createDocumentFragment();
+        const providerId = this.config.providerPreferences.primary;
+        this.ensureProviderConfig(providerId);
+        const meta = PROVIDER_METADATA[providerId];
+        const credential = this.getProviderCredential(providerId);
+
+        const hint = document.createElement("div");
+        hint.className = "b3-label";
+        hint.textContent = meta.description;
+        fragment.appendChild(hint);
+
+        const apiRow = document.createElement("div");
+        apiRow.className = "ai-title-assistant__api-row";
+        const apiInput = document.createElement("input");
+        apiInput.type = "password";
+        apiInput.autocomplete = "off";
+        apiInput.className = "b3-text-field fn__block";
+        apiInput.placeholder = this.i18n.settingApiKeyPlaceholder;
+        apiInput.value = credential.apiKey;
+        apiInput.addEventListener("input", () => {
+            this.updateProviderCredential(providerId, {apiKey: apiInput.value.trim()});
+        });
+        apiRow.appendChild(apiInput);
+
+        const testButton = document.createElement("button");
+        testButton.className = "b3-button b3-button--outline fn__flex-center fn__size120";
+        testButton.textContent = this.i18n.testConnection;
+        testButton.addEventListener("click", () => {
+            void this.testConnection(testButton);
+        });
+        apiRow.appendChild(testButton);
+        fragment.appendChild(this.wrapLabeledField(this.i18n.settingApiKey, apiRow));
+
+        const modelInput = document.createElement("input");
+        modelInput.className = "b3-text-field fn__block";
+        modelInput.placeholder = meta.defaultModel;
+        modelInput.value = credential.model ?? meta.defaultModel;
+        modelInput.addEventListener("change", () => {
+            this.updateProviderCredential(providerId, {model: modelInput.value.trim() || meta.defaultModel});
+        });
+        fragment.appendChild(this.wrapLabeledField(this.i18n.settingModel, modelInput));
+
+        const baseInput = document.createElement("input");
+        baseInput.className = "b3-text-field fn__block";
+        baseInput.type = "url";
+        baseInput.placeholder = meta.defaultBaseUrl;
+        baseInput.value = credential.baseUrl ?? meta.defaultBaseUrl;
+        baseInput.readOnly = !meta.supportsCustomBaseUrl;
+        baseInput.addEventListener("change", () => {
+            if (!meta.supportsCustomBaseUrl) {
+                baseInput.value = meta.defaultBaseUrl;
+                return;
+            }
+            this.updateProviderCredential(providerId, {baseUrl: baseInput.value.trim() || meta.defaultBaseUrl});
+        });
+        fragment.appendChild(this.wrapLabeledField(this.i18n.settingApiBaseUrl, baseInput));
+
+        return fragment;
+    }
+
+    private wrapLabeledField(labelText: string, element: HTMLElement) {
+        const wrapper = document.createElement("label");
+        wrapper.className = "ai-title-assistant__fieldset";
+        const span = document.createElement("span");
+        span.className = "ai-title-assistant__fieldset-label";
+        span.textContent = labelText;
+        wrapper.append(span, element);
+        return wrapper;
+    }
+
+    private updateProviderCredential(providerId: ProviderId, patch: Partial<ProviderCredential>) {
+        const current = this.config.providers[providerId] ?? {...DEFAULT_PROVIDER_CREDENTIALS[providerId]};
+        this.config.providers[providerId] = {...current, ...patch};
+        this.scheduleSave();
+    }
+
+    private getProviderCredential(providerId: ProviderId) {
+        return resolveProviderCredential(providerId, this.config.providers[providerId]);
+    }
+
+    private resolveProviderOrder() {
+        return this.dedupeProviders([this.config.providerPreferences.primary, ...this.config.providerPreferences.fallbacks]);
+    }
+
+    private handleProviderSuccess(providerId: ProviderId) {
+        this.config.usage.totalRequests += 1;
+        this.config.usage.lastUsedProvider = providerId;
+        this.config.usage.providerFailureCounts[providerId] = 0;
+        if (this.config.providerPreferences.autoSwitchOnSuccess && providerId !== this.config.providerPreferences.primary) {
+            this.config.providerPreferences.primary = providerId;
+        }
+        this.scheduleSave();
+    }
+
+    private handleProviderFailure(providerId: ProviderId, error: unknown) {
+        const current = this.config.usage.providerFailureCounts[providerId] ?? 0;
+        this.config.usage.providerFailureCounts[providerId] = current + 1;
+        if (!(error instanceof LLMProviderError) || !error.retryable) {
+            this.scheduleSave();
+        }
     }
 
     private injectIcons() {

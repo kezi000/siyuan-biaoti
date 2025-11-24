@@ -40,6 +40,49 @@
     }
   }
 
+  &__provider-config {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__fallback-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__fallback-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+
+  &__fallback-option,
+  &__inline-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  &__fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__fieldset-label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+  }
+
+  &__retry-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
   &__loading svg {
     animation: ai-title-spin 1s linear infinite;
   }
