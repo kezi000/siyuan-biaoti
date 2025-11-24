@@ -1,4 +1,4 @@
-export type ContextStrategy = "auto" | "selection" | "document";
+export type ContextStrategy = "auto" | "selection" | "block" | "document";
 
 export type TonePreset = "balanced" | "catchy" | "technical" | "narrative";
 

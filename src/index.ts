@@ -92,6 +92,14 @@ export default class AITitleAssistant extends Plugin {
     private abortController?: AbortController;
     private providerCredentialContainer?: HTMLElement;
     private fallbackListContainer?: HTMLElement;
+    private lastActiveRootId?: string;
+    private interactionTrackingRegistered = false;
+    private readonly selectionTrackingHandler = () => {
+        this.updateActiveEditorFromNode(window.getSelection()?.anchorNode ?? null);
+    };
+    private readonly focusTrackingHandler = (event: FocusEvent) => {
+        this.updateActiveEditorFromNode(event.target as Node | null);
+    };
 
     async onload() {
         this.data[STORAGE_KEY] = createDefaultConfig();
@@ -101,6 +109,7 @@ export default class AITitleAssistant extends Plugin {
         this.injectIcons();
         this.registerCommands();
         this.mountSettingPanel();
+        this.registerInteractionTracking();
         if (this.i18n.pluginReady) {
             console.log(this.i18n.pluginReady);
         }
@@ -119,6 +128,7 @@ export default class AITitleAssistant extends Plugin {
 
     onunload() {
         this.abortController?.abort();
+        this.unregisterInteractionTracking();
     }
 
     private async loadConfig() {
@@ -140,6 +150,24 @@ export default class AITitleAssistant extends Plugin {
                 void this.handleGenerateTitle();
             }
         });
+    }
+
+    private registerInteractionTracking() {
+        if (this.interactionTrackingRegistered) {
+            return;
+        }
+        document.addEventListener("selectionchange", this.selectionTrackingHandler);
+        window.addEventListener("focusin", this.focusTrackingHandler, true);
+        this.interactionTrackingRegistered = true;
+    }
+
+    private unregisterInteractionTracking() {
+        if (!this.interactionTrackingRegistered) {
+            return;
+        }
+        document.removeEventListener("selectionchange", this.selectionTrackingHandler);
+        window.removeEventListener("focusin", this.focusTrackingHandler, true);
+        this.interactionTrackingRegistered = false;
     }
 
     private mountSettingPanel() {
@@ -285,6 +313,7 @@ export default class AITitleAssistant extends Plugin {
                 options: [
                     {value: "auto", label: this.i18n.contextAuto},
                     {value: "selection", label: this.i18n.contextSelection},
+                    {value: "block", label: this.i18n.contextBlock},
                     {value: "document", label: this.i18n.contextDocument}
                 ],
                 onChange: (value) => {
@@ -487,22 +516,161 @@ export default class AITitleAssistant extends Plugin {
             showMessage(this.i18n.needDoc);
             return undefined;
         }
-        return editors[0];
+        const selectionEditor = this.findEditorForNode(window.getSelection()?.anchorNode ?? null, editors);
+        if (selectionEditor) {
+            return this.setLastActiveEditor(selectionEditor);
+        }
+        const activeElementEditor = this.findEditorForNode(document.activeElement, editors);
+        if (activeElementEditor) {
+            return this.setLastActiveEditor(activeElementEditor);
+        }
+        if (this.lastActiveRootId) {
+            const remembered = editors.find((editor) => editor?.protyle?.block?.rootID === this.lastActiveRootId);
+            if (remembered) {
+                return remembered;
+            }
+        }
+        const focused = editors.find((editor) => {
+            const element = editor?.protyle?.element as HTMLElement | undefined;
+            return element ? element.classList.contains("protyle--active") : false;
+        });
+        if (focused) {
+            return this.setLastActiveEditor(focused);
+        }
+        return this.setLastActiveEditor(editors[0]);
+    }
+
+    private updateActiveEditorFromNode(node: Node | null) {
+        const editor = this.findEditorForNode(node);
+        if (editor) {
+            this.setLastActiveEditor(editor);
+        }
+    }
+
+    private findEditorForNode(node: Node | Element | null, editors?: any[]) {
+        const list = editors ?? getAllEditor();
+        if (!node || !list || list.length === 0) {
+            return undefined;
+        }
+        const element = this.resolveElementFromNode(node);
+        if (!element) {
+            return undefined;
+        }
+        return list.find((editor) => {
+            const container = editor?.protyle?.element as HTMLElement | undefined;
+            return container ? container.contains(element) : false;
+        });
+    }
+
+    private resolveElementFromNode(node: Node | Element | null) {
+        if (!node) {
+            return null;
+        }
+        if (node instanceof Element) {
+            return node;
+        }
+        return node.parentElement;
+    }
+
+    private setLastActiveEditor(editor: any) {
+        const rootId = editor?.protyle?.block?.rootID;
+        if (rootId) {
+            this.lastActiveRootId = rootId;
+        }
+        return editor;
     }
 
     private extractContext(editor: any) {
-        const selectionText = window.getSelection()?.toString().trim();
-        if (this.config.contextStrategy === "selection") {
+        const selectionText = this.getCurrentSelectionText();
+        const strategy = this.config.contextStrategy;
+        if (strategy === "selection") {
             if (selectionText) {
                 return this.normalizeContext(selectionText);
             }
             showMessage(this.i18n.contextSelectionRequired);
             return undefined;
         }
-        if (this.config.contextStrategy === "auto" && selectionText) {
-            return this.normalizeContext(selectionText);
+        if (strategy === "block") {
+            const blockText = this.getActiveBlockText(editor);
+            if (blockText) {
+                return this.normalizeContext(blockText);
+            }
+            showMessage(this.i18n.contextBlockUnavailable);
+            return undefined;
+        }
+        if (strategy === "auto") {
+            if (selectionText) {
+                return this.normalizeContext(selectionText);
+            }
+            const blockText = this.getActiveBlockText(editor);
+            if (blockText) {
+                return this.normalizeContext(blockText);
+            }
         }
         return this.normalizeContext(this.getDocumentText(editor));
+    }
+
+    private getCurrentSelectionText() {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+            return "";
+        }
+        return selection.toString().trim();
+    }
+
+    private getActiveBlockText(editor: any) {
+        const root = editor?.protyle?.wysiwyg?.element as HTMLElement | undefined;
+        if (!root) {
+            return "";
+        }
+        const seedNode = window.getSelection()?.anchorNode ?? document.activeElement;
+        const block = this.findBlockElement(seedNode, root);
+        if (!block) {
+            return "";
+        }
+        const centerText = block.innerText?.trim();
+        if (!centerText) {
+            return "";
+        }
+        const limit = Math.max(200, this.config.contextMaxChars);
+        let remaining = Math.max(0, limit - centerText.length);
+        const after: string[] = [];
+        const before: string[] = [];
+        let next = block.nextElementSibling as HTMLElement | null;
+        let prev = block.previousElementSibling as HTMLElement | null;
+        while (remaining > 0 && (next || prev)) {
+            if (next) {
+                const text = next.innerText?.trim();
+                if (text) {
+                    after.push(text);
+                    remaining = Math.max(0, remaining - text.length);
+                }
+                next = next.nextElementSibling as HTMLElement | null;
+            }
+            if (remaining <= 0) {
+                break;
+            }
+            if (prev) {
+                const text = prev.innerText?.trim();
+                if (text) {
+                    before.unshift(text);
+                    remaining = Math.max(0, remaining - text.length);
+                }
+                prev = prev.previousElementSibling as HTMLElement | null;
+            }
+        }
+        return [...before, centerText, ...after].join("\n").trim();
+    }
+
+    private findBlockElement(seedNode: Node | Element | null, root: HTMLElement) {
+        const element = this.resolveElementFromNode(seedNode);
+        if (element && root.contains(element)) {
+            const block = element.closest("[data-node-id]") as HTMLElement | null;
+            if (block && root.contains(block)) {
+                return block;
+            }
+        }
+        return root.querySelector("[data-node-id]") as HTMLElement | null;
     }
 
     private getDocumentText(editor: any) {
