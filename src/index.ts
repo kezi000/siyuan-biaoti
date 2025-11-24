@@ -58,7 +58,7 @@ function createDefaultConfig(): TitleConfig {
     return {
         providerPreferences: {
             primary: "openai",
-            fallbacks: PROVIDER_IDS.filter((id) => id !== "openai"),
+            fallbacks: [],
             autoSwitchOnSuccess: true
         },
         providers: cloneProviders(),
@@ -530,6 +530,10 @@ export default class AITitleAssistant extends Plugin {
                 return remembered;
             }
         }
+        const visible = editors.find((editor) => this.isEditorVisible(editor));
+        if (visible) {
+            return this.setLastActiveEditor(visible);
+        }
         const focused = editors.find((editor) => {
             const element = editor?.protyle?.element as HTMLElement | undefined;
             return element ? element.classList.contains("protyle--active") : false;
@@ -578,6 +582,18 @@ export default class AITitleAssistant extends Plugin {
             this.lastActiveRootId = rootId;
         }
         return editor;
+    }
+
+    private isEditorVisible(editor: any) {
+        const element = editor?.protyle?.element as HTMLElement | undefined;
+        if (!element) {
+            return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.visibility === "hidden" || style.display === "none") {
+            return false;
+        }
+        return element.offsetParent !== null || style.position === "fixed";
     }
 
     private extractContext(editor: any) {
