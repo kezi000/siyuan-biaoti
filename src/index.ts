@@ -32,6 +32,7 @@ const DEFAULT_PROMPT = [
     "Read the following content and craft the most compelling title.",
     "Keep the language as {{language}} with a {{tone}} tone.",
     "Return the title only without extra explanation.",
+    "仅回复标题,务必简明精炼.",
     "",
     "{{content}}"
 ].join("\n");
@@ -81,7 +82,7 @@ function createDefaultConfig(): TitleConfig {
         },
         temperature: 0.5,
         topP: 0.9,
-        maxTokens: 64,
+        maxTokens: 128,
         language: DEFAULT_LANGUAGE,
         tone: "balanced",
         contextStrategy: "auto",
@@ -266,9 +267,9 @@ export default class AITitleAssistant extends Plugin {
             description: this.i18n.settingMaxTokensDesc,
             createActionElement: () => this.createNumberInput({
                 value: this.config.maxTokens,
-                min: 16,
-                max: 256,
-                step: 8,
+                min: 32,
+                max: 512,
+                step: 16,
                 onCommit: (value) => {
                     this.config.maxTokens = value;
                     this.scheduleSave();
@@ -1047,19 +1048,33 @@ export default class AITitleAssistant extends Plugin {
         modelInput.addEventListener("change", () => {
             this.updateProviderCredential(providerId, {model: modelInput.value.trim() || meta.defaultModel});
         });
-        fragment.appendChild(this.wrapLabeledField(this.i18n.settingModel, modelInput));
+        
+        // 添加模型选择容器
+        const modelContainer = document.createElement("div");
+        modelContainer.appendChild(this.wrapLabeledField(this.i18n.settingModel, modelInput));
+        
+        // 如果是智谱GLM，添加模型选择提示
+        if (providerId === "zhipu") {
+            const modelHint = document.createElement("div");
+            modelHint.className = "b3-label__text";
+            modelHint.style.fontSize = "12px";
+            modelHint.style.color = "var(--b3-theme-on-surface-light)";
+            modelHint.style.marginTop = "4px";
+            modelHint.innerHTML = "💡 <strong>推荐模型：</strong><br/>" +
+                "• <code>glm-4-flash</code> - 快速响应，无推理过程（推荐用于标题生成）<br/>" +
+                "• <code>glm-4</code> - 标准模型<br/>" +
+                "• <code>glm-4.6</code> - 推理模型，会输出思考过程，需更多 tokens";
+            modelContainer.appendChild(modelHint);
+        }
+        
+        fragment.appendChild(modelContainer);
 
         const baseInput = document.createElement("input");
         baseInput.className = "b3-text-field fn__block";
         baseInput.type = "url";
         baseInput.placeholder = meta.defaultBaseUrl;
         baseInput.value = credential.baseUrl ?? meta.defaultBaseUrl;
-        baseInput.readOnly = !meta.supportsCustomBaseUrl;
         baseInput.addEventListener("change", () => {
-            if (!meta.supportsCustomBaseUrl) {
-                baseInput.value = meta.defaultBaseUrl;
-                return;
-            }
             this.updateProviderCredential(providerId, {baseUrl: baseInput.value.trim() || meta.defaultBaseUrl});
         });
         fragment.appendChild(this.wrapLabeledField(this.i18n.settingApiBaseUrl, baseInput));
@@ -1099,9 +1114,24 @@ export default class AITitleAssistant extends Plugin {
             });
             const docEntry = breadcrumb?.find((item) => item.type === "NodeDocument") ?? breadcrumb?.[0];
             if (docEntry?.id) {
+                // 尝试获取完整文档路径
+                let docPath = docEntry.name ?? "";
+                try {
+                    const docInfo = await this.fetchPostAsync<{box: string; path: string; hPath: string}>("/api/filetree/getDoc", {
+                        id: docEntry.id,
+                        mode: 0,
+                        size: 0
+                    });
+                    // 优先使用 hPath (人类可读路径)，其次 path
+                    docPath = docInfo?.hPath || docInfo?.path || docEntry.name || "";
+                } catch (err) {
+                    console.warn("Failed to fetch doc info, using breadcrumb name", err);
+                    docPath = docEntry.name || "";
+                }
+                
                 const resolved: ResolvedDocument = {
                     id: docEntry.id,
-                    path: docEntry.name ?? "",
+                    path: docPath,
                     blockId
                 };
                 this.lastActiveRootId = docEntry.id;

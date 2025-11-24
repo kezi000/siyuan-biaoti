@@ -11,6 +11,8 @@ export interface ProviderCredential {
     organization?: string;
     extraHeaders?: Record<string, string>;
     customParams?: Record<string, string | number | boolean>;
+    // Zhipu GLM specific: prefer non-reasoning models for title generation
+    preferNonReasoningModel?: boolean;
 }
 
 export type ProviderCredentialMap = Record<ProviderId | string, ProviderCredential>;

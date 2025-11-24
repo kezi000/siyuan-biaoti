@@ -38,24 +38,36 @@ export class AnthropicProvider implements LLMProvider {
             });
         }
         const content = this.extractContent(data);
-        if (!content) {
-            throw new LLMProviderError("Empty response payload", {providerId: this.id, retryable: false});
+        const trimmedContent = content?.trim();
+        if (!trimmedContent) {
+            console.error("[AnthropicProvider] Empty or invalid response:", JSON.stringify(data, null, 2));
+            throw new LLMProviderError(`Empty response payload. Raw response: ${JSON.stringify(data)}`, {
+                providerId: this.id, 
+                retryable: true
+            });
         }
-        return content.trim();
+        return trimmedContent;
     }
 
     async testConnection(config: ProviderCredential): Promise<void> {
         const resolved = this.getConfig(config);
         ensureApiKey(resolved, this.id);
-        const response = await fetch(`${resolved.baseUrl}/v1/models`, {
-            headers: this.buildHeaders(resolved)
+        // Anthropic 不提供 models 端点，使用轻量级的 messages 请求测试连接
+        const response = await fetch(`${resolved.baseUrl}/v1/messages`, {
+            method: "POST",
+            headers: this.buildHeaders(resolved),
+            body: JSON.stringify({
+                model: resolved.model,
+                messages: [{role: "user", content: "test"}],
+                max_tokens: 1
+            })
         });
+        const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
             throw new LLMProviderError(body?.error?.message || response.statusText, {
                 providerId: this.id,
                 status: response.status,
-                retryable: false
+                retryable: response.status >= 500 || response.status === 429
             });
         }
     }

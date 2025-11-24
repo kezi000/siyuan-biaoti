@@ -1,7 +1,7 @@
 {
-  "name": "plugin-sample",
-  "author": "Codex",
-  "url": "https://github.com/siyuan-note/plugin-sample",
+  "name": "siyuan-biaoti",
+  "author": "kezi000",
+  "url": "https://github.com/kezi000/siyuan-biaoti",
   "version": "0.5.0",
   "minAppVersion": "3.3.0",
   "backends": [

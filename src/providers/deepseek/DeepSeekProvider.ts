@@ -33,25 +33,62 @@ export class DeepSeekProvider implements LLMProvider {
                 retryable: response.status >= 500 || response.status === 429
             });
         }
-        const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text;
-        if (!content) {
-            throw new LLMProviderError("Empty response payload", {providerId: this.id, retryable: false});
+        
+        // 增强的响应解析逻辑，支持多种可能的响应格式
+        let content: string | undefined;
+        
+        if (data?.choices && Array.isArray(data.choices) && data.choices.length > 0) {
+            const choice = data.choices[0];
+            
+            if (choice?.message?.content) {
+                content = choice.message.content;
+            } else if (choice?.text) {
+                content = choice.text;
+            } else if (choice?.delta?.content) {
+                content = choice.delta.content;
+            }
         }
-        return (Array.isArray(content) ? content.map((chunk: any) => chunk?.text || "").join(" ") : String(content)).trim();
+        
+        const trimmedContent = content?.trim();
+        if (!trimmedContent) {
+            console.error("[DeepSeekProvider] Empty or invalid response:", JSON.stringify(data, null, 2));
+            throw new LLMProviderError(`Empty response payload. Raw response: ${JSON.stringify(data)}`, {
+                providerId: this.id, 
+                retryable: true
+            });
+        }
+        
+        return trimmedContent;
     }
 
     async testConnection(config: ProviderCredential): Promise<void> {
         const resolved = this.getConfig(config);
         ensureApiKey(resolved, this.id);
-        const response = await fetch(`${resolved.baseUrl}/models`, {
+        
+        // 优先尝试 models 端点
+        let response = await fetch(`${resolved.baseUrl}/models`, {
             headers: this.buildHeaders(resolved)
         });
+        
+        // 如果 models 端点不可用（自定义网关可能不支持），尝试轻量级的 chat 请求
+        if (!response.ok && response.status === 404) {
+            response = await fetch(`${resolved.baseUrl}/chat/completions`, {
+                method: "POST",
+                headers: this.buildHeaders(resolved),
+                body: JSON.stringify({
+                    model: resolved.model,
+                    messages: [{role: "user", content: "test"}],
+                    max_tokens: 1
+                })
+            });
+        }
+        
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             throw new LLMProviderError(body?.error?.message || response.statusText, {
                 providerId: this.id,
                 status: response.status,
-                retryable: false
+                retryable: response.status >= 500 || response.status === 429
             });
         }
     }

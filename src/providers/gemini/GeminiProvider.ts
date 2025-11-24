@@ -38,10 +38,15 @@ export class GeminiProvider implements LLMProvider {
             });
         }
         const content = this.extractText(data);
-        if (!content) {
-            throw new LLMProviderError("Empty response payload", {providerId: this.id, retryable: false});
+        const trimmedContent = content?.trim();
+        if (!trimmedContent) {
+            console.error("[GeminiProvider] Empty or invalid response:", JSON.stringify(data, null, 2));
+            throw new LLMProviderError(`Empty response payload. Raw response: ${JSON.stringify(data)}`, {
+                providerId: this.id, 
+                retryable: true
+            });
         }
-        return content.trim();
+        return trimmedContent;
     }
 
     async testConnection(config: ProviderCredential): Promise<void> {

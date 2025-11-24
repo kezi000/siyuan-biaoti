@@ -15,7 +15,7 @@ The plugin reads the current note, builds an OpenAI-compatible prompt, and lets 
 
 ## Getting Started
 
-1. Clone or copy the repo into `{workspace}/data/plugins/plugin-sample`.
+1. Clone or copy the repo into `{workspace}/data/plugins/siyuan-biaoti`.
 2. Install dependencies and build assets:
 
    ```bash

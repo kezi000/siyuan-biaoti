@@ -17,7 +17,7 @@ export const PROVIDER_METADATA: Record<ProviderId, ProviderMeta> = {
         defaultBaseUrl: "https://api.anthropic.com",
         defaultModel: "claude-3-5-sonnet-20241022",
         requiresApiKey: true,
-        supportsCustomBaseUrl: false
+        supportsCustomBaseUrl: true
     },
     gemini: {
         id: "gemini",
@@ -26,7 +26,7 @@ export const PROVIDER_METADATA: Record<ProviderId, ProviderMeta> = {
         defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
         defaultModel: "gemini-1.5-pro-latest",
         requiresApiKey: true,
-        supportsCustomBaseUrl: false
+        supportsCustomBaseUrl: true
     },
     deepseek: {
         id: "deepseek",
@@ -40,11 +40,11 @@ export const PROVIDER_METADATA: Record<ProviderId, ProviderMeta> = {
     zhipu: {
         id: "zhipu",
         label: "Zhipu GLM",
-        description: "GLM-4 and related Chinese models",
+        description: "GLM-4 and related Chinese models. 推荐使用 glm-4 或 glm-4-flash（非推理模型）以获得更快速的标题生成。",
         defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
-        defaultModel: "glm-4",
+        defaultModel: "glm-4-flash",
         requiresApiKey: true,
-        supportsCustomBaseUrl: false
+        supportsCustomBaseUrl: true
     },
     custom: {
         id: "custom",
