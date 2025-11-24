@@ -1,22 +1,47 @@
-.plugin-sample {
-  &__custom-tab {
-    background-color: var(--b3-theme-background);
-    height: 100%;
-    width: 100%;
+.ai-title-assistant {
+  &__dialog {
     display: flex;
-    justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  &__custom-dock {
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  &__hint {
+    font-size: 0.9rem;
+    color: var(--b3-theme-on-surface-light);
   }
 
-  &__time {
-    background: var(--b3-card-info-background);
-    border-radius: 4px;
-    padding: 2px 8px;
+  &__preview {
+    padding: 12px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--b3-border-color);
+    background-color: var(--b3-theme-background-light);
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  &__button {
+    min-width: 120px;
+  }
+
+  &__loading svg {
+    animation: ai-title-spin 1s linear infinite;
+  }
+}
+
+@keyframes ai-title-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
