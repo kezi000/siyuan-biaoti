@@ -24,7 +24,7 @@ AI Title Assistant lets you trigger large language models directly inside SiYuan
 
 3. Enable **AI Title Assistant** from the SiYuan marketplace (or the downloaded package) and toggle it on.
 4. Open **Settings → Plugins → AI Title Assistant** and configure:
-   - API Base URL (default https://api.openai.com/v1)
+   - API Base URL (default https://api.openai.com/v1 )
    - API Key (stored locally with one-click connectivity tests)
    - Model parameters (temperature, top P, max tokens)
    - Title language, tone preset, context strategy, and prompt template
@@ -62,7 +62,7 @@ AI Title Assistant lets you trigger large language models directly inside SiYuan
 
 - pnpm run dev: development mode with incremental builds. pnpm run build: produces package.zip for release.
 - pnpm run lint: run ESLint prior to submitting changes.
-- See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) for process, architecture, and testing tips.
+- See [docs/DEVELOPMENT_PLAN.md]( https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md ) for process, architecture, and testing tips.
 
 ## Privacy
 

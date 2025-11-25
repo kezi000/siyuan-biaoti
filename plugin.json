@@ -2,7 +2,7 @@
   "name": "siyuan-biaoti",
   "author": "kezi000",
   "url": "https://github.com/kezi000/siyuan-biaoti",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "minAppVersion": "3.3.0",
   "backends": [
     "all"
@@ -13,11 +13,11 @@
   "disabledInPublish": true,
   "displayName": {
     "default": "AI Title Assistant",
-    "zh_CN": "AI ????"
+    "zh_CN": "AI 标题助手"
   },
   "description": {
     "default": "Generate compelling document titles through an OpenAI-compatible workflow.",
-    "zh_CN": "?? OpenAI ????????????????????????"
+    "zh_CN": "通过兼容 OpenAI 的工作流生成吸引人的文档标题。"
   },
   "readme": {
     "default": "README.md",

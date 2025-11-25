@@ -24,7 +24,7 @@ AI 标题助理让你在思源笔记中一键调用大模型生成优质标题�
 
 3. 在思源集市或「已下载」列表中启用 **AI 标题助理**。
 4. 打开 **设置 → 插件 → AI 标题助理**，配置：
-   - API Base URL（默认 https://api.openai.com/v1）
+   - API Base URL（默认 https://api.openai.com/v1 ）
    - API Key（本地保存，并可一键测试连通性）
    - 模型与参数（Temperature、Top P、最大 token）
    - 标题语言、语气预设、上下文策略、提示词模板
@@ -62,7 +62,7 @@ AI 标题助理让你在思源笔记中一键调用大模型生成优质标题�
 
 - pnpm run dev：开发模式；pnpm run build：生成发布用 package.zip。
 - pnpm run lint：在提交前执行 ESLint。
-- 参阅 [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) 获取流程、架构与测试建议。
+- 参阅 [docs/DEVELOPMENT_PLAN.md]( https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md ) 获取流程、架构与测试建议。
 
 ## 隐私声明
 
