@@ -2,7 +2,7 @@
   "name": "siyuan-biaoti",
   "author": "kezi000",
   "url": "https://github.com/kezi000/siyuan-biaoti",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "minAppVersion": "3.3.0",
   "backends": [
     "windows",
@@ -32,8 +32,7 @@
     "zh_CN": "\u57fa\u4e8e OpenAI \u63a5\u53e3\u7684\u667a\u80fd\u6807\u9898\u751f\u6210\u529f\u80fd\uff0c\u652f\u6301\u81ea\u5b9a\u4e49\u53c2\u6570\u4e0e\u63d0\u793a\u8bcd\u3002"
   },
   "readme": {
-    "default": "README.md",
-    "zh_CN": "README_zh_CN.md"
+    "default": "README.md"
   },
   "funding": {
     "openCollective": "",
