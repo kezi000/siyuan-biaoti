@@ -1,73 +1,71 @@
-[English](README.md)
+﻿[中文说明](README_zh_CN.md)
 
-# AI 标题助理
+# AI Title Assistant
 
-在思源笔记中一键调用大模型生成标题，兼容所有 OpenAI 风格的接口，并提供手动确认流程。
+AI Title Assistant lets you trigger large language models directly inside SiYuan to craft polished document titles. The plugin is fully compatible with OpenAI-style APIs and keeps every request under your control.
 
-## 功能亮点
+## Feature Highlights
 
-- **完善的 AI 配置界面**：Base URL、API Key、模型、Temperature、Top P、最大 token、语言、风格等全部可调。
-- **用户手动触发**：顶栏魔杖按钮与命令面板条目（桌面快捷键 `⇧⌘T`）均可发起，执行状态清晰。
-- **自定义提示词**：模板支持 `{{content}}`、`{{language}}`、`{{tone}}` 占位符，方便适配不同文风。
-- **上下文策略**：自动（优先选区）、仅选区、整篇文档三种模式，并可设置字符上限，避免泄露多余信息。
-- **标题确认弹窗**：生成结果可复制、也可直接调用 `/api/filetree/renameDocByID` 安全替换文档标题。
+- **Complete AI configuration panel**: Tweak Base URL, API key, model, temperature, top P, max tokens, language, tone, and more from one place.
+- **Manual triggers**: Start generation from the top-bar wand or the command palette entry (desktop shortcut ⇧⌘T) so you always know when requests are sent.
+- **Custom prompt templates**: Supply {{content}}, {{language}}, and {{tone}} placeholders to adapt the workflow to any writing style.
+- **Smart context strategies**: Auto, selection-only, block, or entire document modes with configurable character caps to limit exposure.
+- **Confirmation dialog**: Copy the generated title or call /api/filetree/renameDocByID to safely rename the current document.
 
-## 使用步骤
+## Usage
 
-1. 将仓库克隆/复制到 `{工作空间}/data/plugins/siyuan-biaoti`。
-2. 安装依赖并开启实时编译：
+1. Clone or copy this repo into {workspace}/data/plugins/siyuan-biaoti.
+2. Install dependencies and start the watcher:
 
-   ```bash
+   `ash
    pnpm install
-   pnpm run dev   # 实时编译
-   ```
+   pnpm run dev   # watch mode
+   `
 
-3. 在思源集市 ▸ 已下载 中启用 **AI 标题助理**。
-4. 打开 **设置 ▸ 插件 ▸ AI 标题助理**，配置：
-   - API Base URL（默认 `https://api.openai.com/v1`）
-   - API Key（仅本地保存，可一键测试连通）
-   - 模型与参数（Temperature、Top P、最大 token）
-   - 标题语言、风格预设、上下文策略、提示词模板
-5. 打开任意文档，点击顶栏魔杖或 `⇧⌘T`，预览生成的标题并选择复制或替换。
+3. Enable **AI Title Assistant** from the SiYuan marketplace (or the downloaded package) and toggle it on.
+4. Open **Settings → Plugins → AI Title Assistant** and configure:
+   - API Base URL (default https://api.openai.com/v1)
+   - API Key (stored locally with one-click connectivity tests)
+   - Model parameters (temperature, top P, max tokens)
+   - Title language, tone preset, context strategy, and prompt template
+5. Open any document, click the wand icon or press ⇧⌘T, review the generated title, then copy or apply it.
 
-### API 密钥配置
+> Tip: If API requests fail, verify the key/network combination, rerun pnpm run dev, and press Ctrl + R in SiYuan to reload the plugin after saving changes.
 
-1. 首次使用 **需要配置 AI 服务商**：选择内置的 OpenAI、Anthropic、Gemini、DeepSeek、智谱 AI 等服务商
-2. `服务商配置` 会自动填充 `API 地址`，只需填写您的 `sk-xxx` 格式密钥即可
-3. 填写完成 **点击测试** 会请求 `${baseUrl}/models` 接口验证连通性，并返回可用模型列表
-4. 配置信息保存 **自动加密**，所有密钥都经过思源的加密存储机制保护，位于 `{workspace}/data/storage` 插件数据目录
+### API Key Setup
 
-![AI 标题助理预览](preview.png)
+1. On first launch choose an AI provider (OpenAI, Anthropic, Gemini, DeepSeek, Zhipu, etc.).
+2. Provider configuration auto-fills the base URL; you only need to paste your sk-xxx style key.
+3. Press **Test Connection** to call ${baseUrl}/models and fetch available models.
+4. Credentials are encrypted by SiYuan and stored under {workspace}/data/storage.
 
-> 提示：若 API 密钥填写错误或测试失败，请检查网络连接或更换服务商后，点击`pnpm run dev` 保存后，在思源中按 Ctrl+R 重新加载插件
+## Configuration Reference
 
-## 参数说明
+- **API Base URL**: Any OpenAI-compatible gateway such as OpenAI, Azure OpenAI, OneAPI, or vendor-specific proxies.
+- **API Key**: Only saved inside the plugin data directory; **Test connection** calls /models for validation.
+- **Model**: Free-form Chat Completion model ID that matches your provider.
+- **Temperature / Top P**: Controls randomness (defaults 0.5 / 0.9); leave Top P at 1 if unsure.
+- **Max Tokens**: Caps title length and avoids verbose responses.
+- **Language & Tone**: Injected into the prompt template to steer wording.
+- **Context Strategy & Limit**: Choose auto/selection/block/document with a default 1200-character limit to manage token spend.
+- **Prompt Template**: You can fully replace it; clearing the field restores the default instructions with placeholders.
 
-- **API Base URL**：任意符合 OpenAI 标准的网关，例如官方 OpenAI、Azure OpenAI、OneAPI 等。
-- **API Key**：仅存储在插件数据中；点击 *测试连通* 会调用 `/models` 进行校验。
-- **Model**：Chat Completion 模型名称，可自行填写供应商自定义 ID。
-- **Temperature / Top P**：控制随机度，默认 0.5 / 1，Top P 不确定时保持 1。
-- **Max Tokens**：限制标题长度，避免输出冗长段落。
-- **Language & Tone**：写入模板，指示模型使用何种语言/风格。
-- **Context Strategy & Limit**：选择自动/选区/全文，字符上限默认 1200，可避免高额 token 消耗。
-- **Prompt Template**：支持 `{{content}}`、`{{language}}`、`{{tone}}`，清空即可恢复默认模板。
+## Trigger Flow
 
-## 触发流程
+1. You click the wand or run the command palette entry.
+2. The plugin extracts context (selection preferred), trims whitespace, and enforces the character limit.
+3. A request is sent to ${baseUrl}/chat/completions (with retries/fallbacks when configured).
+4. A dialog previews the best title with options to copy or apply.
+5. Applying the title calls the official API to rename the document to keep sync/version states safe.
 
-1. 用户点击按钮/命令。
-2. 插件根据策略抽取上下文，清理空白并截断到设定长度。
-3. 构造请求，调用 `${baseUrl}/chat/completions`。
-4. 弹窗展示标题，提供 **复制** 与 **替换文档标题**。
-5. 替换操作通过官方 API 完成，确保与同步/版本控制兼容。
+## Development & Iteration
 
-## 开发与迭代
+- pnpm run dev: development mode with incremental builds. pnpm run build: produces package.zip for release.
+- pnpm run lint: run ESLint prior to submitting changes.
+- See [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) for process, architecture, and testing tips.
 
-- `pnpm run dev`：开发模式，`pnpm run build`：打包为 `package.zip`。
-- `pnpm run lint`：执行 ESLint。
-- 参考 [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md) 获取完整的最佳实践流程、架构与测试建议。
+## Privacy
 
-## 隐私声明
-
-- API Key 永不离开本地，可通过设置面板重新输入或覆盖。
-- 仅上传选中的文本或截断后的文档片段，不会扫全库。
-- 所有请求都遵循思源的内置 fetch 环境，不包含额外遥测。
+- API keys never leave the local machine and can be overwritten at any time.
+- Only the selected text (or truncated document) is sent; the entire workspace is never scanned.
+- Requests rely on SiYuan's built-in etch and contain zero telemetry beyond what the provider requires.

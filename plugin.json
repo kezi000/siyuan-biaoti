@@ -5,47 +5,28 @@
   "version": "0.5.2",
   "minAppVersion": "3.3.0",
   "backends": [
-    "windows",
-    "linux",
-    "darwin",
-    "ios",
-    "android",
-    "harmony",
-    "docker",
     "all"
   ],
   "frontends": [
-    "desktop",
-    "mobile",
-    "browser-desktop",
-    "browser-mobile",
-    "desktop-window",
     "all"
   ],
-  "disabledInPublish": false,
+  "disabledInPublish": true,
   "displayName": {
     "default": "AI Title Assistant",
-    "zh_CN": "AI \u6807\u9898\u52a9\u7406"
+    "zh_CN": "AI ????"
   },
   "description": {
     "default": "Generate compelling document titles through an OpenAI-compatible workflow.",
-    "zh_CN": "\u57fa\u4e8e OpenAI \u63a5\u53e3\u7684\u667a\u80fd\u6807\u9898\u751f\u6210\u529f\u80fd\uff0c\u652f\u6301\u81ea\u5b9a\u4e49\u53c2\u6570\u4e0e\u63d0\u793a\u8bcd\u3002"
+    "zh_CN": "?? OpenAI ????????????????????????"
   },
   "readme": {
-    "default": "README.md"
+    "default": "README.md",
+    "zh_CN": "README_zh_CN.md"
   },
   "funding": {
     "openCollective": "",
     "patreon": "",
     "github": "",
-    "custom": [
-      "https://ld246.com/sponsor"
-    ]
-  },
-  "keywords": [
-    "ai",
-    "title",
-    "assistant",
-    "openai"
-  ]
+    "custom": []
+  }
 }

@@ -140,6 +140,14 @@ export default class AITitleAssistant extends Plugin {
         this.unregisterInteractionTracking();
     }
 
+    async uninstall() {
+        try {
+            await this.removeData(STORAGE_KEY);
+        } catch (error) {
+            console.error("Failed to remove plugin data", error);
+        }
+    }
+
     private async loadConfig() {
         try {
             const saved = await this.loadData<TitleConfig>(STORAGE_KEY);
