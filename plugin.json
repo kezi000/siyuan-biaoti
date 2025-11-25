@@ -2,7 +2,7 @@
   "name": "siyuan-biaoti",
   "author": "kezi000",
   "url": "https://github.com/kezi000/siyuan-biaoti",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "minAppVersion": "3.3.0",
   "backends": [
     "all"
