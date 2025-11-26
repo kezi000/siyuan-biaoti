@@ -17,7 +17,7 @@ AI Title Assistant lets you trigger large language models directly inside SiYuan
 1. Clone or copy this repo into {workspace}/data/plugins/siyuan-biaoti.
 2. Install dependencies and start the watcher:
 
-   `ash
+   `bash
    pnpm install
    pnpm run dev   # watch mode
    `
