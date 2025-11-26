@@ -16,20 +16,25 @@ export class OpenAIProvider implements LLMProvider {
     async generateTitle(options: ProviderGenerateOptions): Promise<string> {
         const config = this.getConfig(options.config);
         ensureApiKey(config, this.id);
+        const requestBody: Record<string, any> = {
+            model: config.model,
+            messages: [
+                {role: "system", content: options.systemPrompt},
+                {role: "user", content: options.prompt}
+            ],
+            temperature: options.temperature,
+            top_p: options.topP,
+            max_tokens: options.maxTokens,
+            stream: false
+        };
+        // OpenAI o1 等推理模型: reasoning_effort 设为 low 降低推理强度
+        if (options.disableThinking) {
+            requestBody.reasoning_effort = "low";
+        }
         const response = await fetch(`${config.baseUrl}/chat/completions`, {
             method: "POST",
             headers: this.buildHeaders(config),
-            body: JSON.stringify({
-                model: config.model,
-                messages: [
-                    {role: "system", content: options.systemPrompt},
-                    {role: "user", content: options.prompt}
-                ],
-                temperature: options.temperature,
-                top_p: options.topP,
-                max_tokens: options.maxTokens,
-                stream: false
-            }),
+            body: JSON.stringify(requestBody),
             signal: options.abortSignal
         });
         const data = await response.json().catch(() => ({}));

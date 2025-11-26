@@ -52,6 +52,15 @@ interface ResolvedDocument {
     id: string;
     path?: string;
     blockId?: string;
+    title?: string;
+}
+
+interface BlockBreadcrumbItem {
+    id: string;
+    name: string;
+    type: string;
+    subType?: string;
+    children?: BlockBreadcrumbItem[] | null;
 }
 
 function cloneProviders(): ProviderCredentialMap {
@@ -87,7 +96,8 @@ function createDefaultConfig(): TitleConfig {
         tone: "balanced",
         contextStrategy: "auto",
         contextMaxChars: 1200,
-        promptTemplate: DEFAULT_PROMPT
+        promptTemplate: DEFAULT_PROMPT,
+        disableThinking: true
     };
 }
 
@@ -103,6 +113,7 @@ export default class AITitleAssistant extends Plugin {
     private lastActiveRootId?: string;
     private interactionTrackingRegistered = false;
     private activeDocument?: {id: string; path?: string; blockId?: string};
+    private activeDocumentRequestToken = 0;
     private readonly selectionTrackingHandler = () => {
         this.updateActiveEditorFromNode(window.getSelection()?.anchorNode ?? null);
     };
@@ -357,6 +368,23 @@ export default class AITitleAssistant extends Plugin {
         });
 
         setting.addItem({
+            title: this.i18n.settingDisableThinking,
+            direction: "row",
+            description: this.i18n.settingDisableThinkingDesc,
+            createActionElement: () => {
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.className = "b3-switch";
+                checkbox.checked = this.config.disableThinking;
+                checkbox.addEventListener("change", () => {
+                    this.config.disableThinking = checkbox.checked;
+                    this.scheduleSave();
+                });
+                return checkbox;
+            }
+        });
+
+        setting.addItem({
             title: this.i18n.settingPromptTemplate,
             description: this.i18n.settingPromptTemplateDesc,
             createActionElement: () => {
@@ -533,34 +561,70 @@ export default class AITitleAssistant extends Plugin {
         }
     }
 
+    /**
+     * 从标签栏获取当前激活标签的 data-id（标签页ID，非文档ID）
+     */
+    private getActiveTabId(): string | undefined {
+        const activeTab = document.querySelector<HTMLElement>(
+            'li.item--focus[data-type="tab-header"]'
+        );
+        return activeTab?.dataset.id;
+    }
+
+    /**
+     * 通过标签页ID匹配编辑器
+     * 编辑器容器的 closest('[data-id]') 与标签页 data-id 匹配
+     */
+    private findEditorByTabId(tabId: string, editors: any[]): any {
+        return editors.find((editor) => {
+            const container = editor?.protyle?.element as HTMLElement | undefined;
+            const tabParent = container?.closest('[data-id]') as HTMLElement | null;
+            return tabParent?.dataset.id === tabId;
+        });
+    }
+
     private getActiveEditor() {
-        const nativeEditor = getNativeActiveEditor?.();
-        if (nativeEditor) {
-            return this.setLastActiveEditor(nativeEditor);
-        }
         const editors = getAllEditor();
         if (!editors || editors.length === 0) {
             showMessage(this.i18n.needDoc);
             return undefined;
         }
+        // 优先通过激活标签页ID匹配编辑器
+        const tabId = this.getActiveTabId();
+        if (tabId) {
+            const tabEditor = this.findEditorByTabId(tabId, editors);
+            if (tabEditor) {
+                return this.setLastActiveEditor(tabEditor);
+            }
+        }
+        // 回退：尝试原生 API
+        const nativeEditor = getNativeActiveEditor?.();
+        if (nativeEditor) {
+            return this.setLastActiveEditor(nativeEditor);
+        }
+        // 回退：通过选区查找
         const selectionEditor = this.findEditorForNode(window.getSelection()?.anchorNode ?? null, editors);
         if (selectionEditor) {
             return this.setLastActiveEditor(selectionEditor);
         }
+        // 回退：通过 activeElement 查找
         const activeElementEditor = this.findEditorForNode(document.activeElement, editors);
         if (activeElementEditor) {
             return this.setLastActiveEditor(activeElementEditor);
         }
+        // 回退：使用记忆的 lastActiveRootId
         if (this.lastActiveRootId) {
             const remembered = editors.find((editor) => editor?.protyle?.block?.rootID === this.lastActiveRootId);
             if (remembered) {
                 return remembered;
             }
         }
+        // 回退：查找可见编辑器
         const visible = editors.find((editor) => this.isEditorVisible(editor));
         if (visible) {
             return this.setLastActiveEditor(visible);
         }
+        // 回退：查找带 protyle--active 类的编辑器
         const focused = editors.find((editor) => {
             const element = editor?.protyle?.element as HTMLElement | undefined;
             return element ? element.classList.contains("protyle--active") : false;
@@ -575,6 +639,25 @@ export default class AITitleAssistant extends Plugin {
         const editor = this.findEditorForNode(node);
         if (editor) {
             this.setLastActiveEditor(editor);
+            void this.refreshActiveDocumentFromEditor(editor, node);
+        }
+    }
+
+    private async refreshActiveDocumentFromEditor(editor: any, seedNode?: Node | null) {
+        const blockId = this.getCurrentBlockId(editor, seedNode) || editor?.protyle?.block?.rootID;
+        if (!blockId || blockId === this.activeDocument?.blockId) {
+            return;
+        }
+        const token = ++this.activeDocumentRequestToken;
+        const resolved = await this.fetchDocumentFromBreadcrumb(blockId);
+        if (token !== this.activeDocumentRequestToken) {
+            return;
+        }
+        if (resolved) {
+            this.activeDocument = resolved;
+            this.lastActiveRootId = resolved.id;
+        } else if (this.activeDocument && this.activeDocument.blockId !== blockId) {
+            this.activeDocument = undefined;
         }
     }
 
@@ -704,13 +787,13 @@ export default class AITitleAssistant extends Plugin {
         return [...before, centerText, ...after].join("\n").trim();
     }
 
-    private getActiveBlockElement(editor: any) {
+    private getActiveBlockElement(editor: any, seedNode?: Node | Element | null) {
         const root = editor?.protyle?.wysiwyg?.element as HTMLElement | undefined;
         if (!root) {
             return null;
         }
-        const seedNode = window.getSelection()?.anchorNode ?? document.activeElement;
-        return this.findBlockElement(seedNode, root);
+        const node = seedNode ?? window.getSelection()?.anchorNode ?? document.activeElement;
+        return this.findBlockElement(node, root);
     }
 
     private findBlockElement(seedNode: Node | Element | null, root: HTMLElement) {
@@ -724,8 +807,8 @@ export default class AITitleAssistant extends Plugin {
         return null;
     }
 
-    private getCurrentBlockId(editor: any) {
-        const block = this.getActiveBlockElement(editor);
+    private getCurrentBlockId(editor: any, seedNode?: Node | Element | null) {
+        const block = this.getActiveBlockElement(editor, seedNode);
         return block?.dataset.nodeId;
     }
 
@@ -772,7 +855,8 @@ export default class AITitleAssistant extends Plugin {
                     temperature: this.config.temperature,
                     topP: this.config.topP,
                     maxTokens: this.config.maxTokens,
-                    abortSignal: this.abortController?.signal
+                    abortSignal: this.abortController?.signal,
+                    disableThinking: this.config.disableThinking
                 }), {signal: this.abortController?.signal});
                 this.handleProviderSuccess(providerId);
                 return title;
@@ -786,40 +870,52 @@ export default class AITitleAssistant extends Plugin {
     }
 
     private showResultDialog(title: string, editor: any, docInfo?: ResolvedDocument) {
+        const doc = docInfo || this.activeDocument;
         const dialog = new Dialog({
             title: this.i18n.dialogTitle,
             content: `<div class="b3-dialog__content ai-title-assistant__dialog">
-    <div class="ai-title-assistant__doc-path" id="ai-title-doc-path"></div>
-    <div class="ai-title-assistant__hint">${this.i18n.dialogHint}</div>
-    <div class="ai-title-assistant__preview" id="ai-title-preview"></div>
+    <div class="ai-title-assistant__doc-info" id="ai-title-doc-info"></div>
+    <div class="ai-title-assistant__section">
+        <div class="ai-title-assistant__section-label">${this.i18n.newTitleLabel}</div>
+        <div class="ai-title-assistant__preview" id="ai-title-preview"></div>
+    </div>
 </div>
 <div class="b3-dialog__action ai-title-assistant__actions">
-    <span class="fn__space"></span>
-    <button class="b3-button b3-button--outline ai-title-assistant__button" data-action="copy">${this.i18n.copyTitle}</button>
-    <button class="b3-button b3-button--text ai-title-assistant__button" data-action="apply">${this.i18n.applyTitle}</button>
-    <button class="b3-button ai-title-assistant__button" data-action="close">${this.i18n.close}</button>
+    <button class="b3-button b3-button--cancel" data-action="close">${this.i18n.close}</button>
+    <div class="fn__flex-1"></div>
+    <button class="b3-button b3-button--text ai-title-assistant__btn-apply" data-action="apply">${this.i18n.applyTitle}</button>
+    <button class="b3-button b3-button--outline" data-action="copy">${this.i18n.copyTitle}</button>
 </div>`,
-            width: this.isMobile ? "92vw" : "520px"
+            width: this.isMobile ? "92vw" : "560px"
         });
         const preview = dialog.element.querySelector("#ai-title-preview") as HTMLElement;
         preview.textContent = title;
-        const docPath = dialog.element.querySelector("#ai-title-doc-path") as HTMLElement;
-        if (docPath) {
-            const resolved = docInfo?.path?.trim() || this.activeDocument?.path?.trim();
-            if (resolved) {
-                const label = `${this.i18n.currentDocLabel}: ${resolved}`;
-                docPath.textContent = label;
-                docPath.title = resolved;
-            } else {
-                const docId = docInfo?.id || this.activeDocument?.id;
-                const fallback = docId
-                    ? this.i18n.currentDocUnknownWithId.replace("${id}", docId)
-                    : this.i18n.currentDocUnknown;
-                docPath.textContent = fallback;
-                docPath.title = fallback;
+        const docInfoEl = dialog.element.querySelector("#ai-title-doc-info") as HTMLElement;
+        if (docInfoEl && doc) {
+            const items: string[] = [];
+            if (doc.path) {
+                items.push(`<div class="ai-title-assistant__doc-info-row">
+                    <span class="ai-title-assistant__doc-info-label">${this.i18n.docInfoPath}</span>
+                    <span class="ai-title-assistant__doc-info-value" title="${doc.path}">${doc.path}</span>
+                </div>`);
             }
+            items.push(`<div class="ai-title-assistant__doc-info-row">
+                <span class="ai-title-assistant__doc-info-label">${this.i18n.docInfoId}</span>
+                <span class="ai-title-assistant__doc-info-value ai-title-assistant__doc-info-id">${doc.id}</span>
+            </div>`);
+            if (doc.title) {
+                items.push(`<div class="ai-title-assistant__doc-info-row">
+                    <span class="ai-title-assistant__doc-info-label">${this.i18n.docInfoOriginalTitle}</span>
+                    <span class="ai-title-assistant__doc-info-value">${doc.title}</span>
+                </div>`);
+            }
+            docInfoEl.innerHTML = items.join("");
+        } else if (docInfoEl) {
+            const fallback = doc?.id
+                ? this.i18n.currentDocUnknownWithId.replace("${id}", doc.id)
+                : this.i18n.currentDocUnknown;
+            docInfoEl.innerHTML = `<div class="ai-title-assistant__doc-info-row">${fallback}</div>`;
         }
-
         dialog.element.querySelectorAll("button[data-action]").forEach((btn) => {
             btn.addEventListener("click", async (event) => {
                 const action = (event.currentTarget as HTMLElement).getAttribute("data-action");
@@ -932,7 +1028,8 @@ export default class AITitleAssistant extends Plugin {
             tone: saved.tone ?? base.tone,
             contextStrategy: saved.contextStrategy ?? base.contextStrategy,
             contextMaxChars: saved.contextMaxChars ?? base.contextMaxChars,
-            promptTemplate: saved.promptTemplate ?? base.promptTemplate
+            promptTemplate: saved.promptTemplate ?? base.promptTemplate,
+            disableThinking: saved.disableThinking ?? base.disableThinking
         };
         return normalized;
     }
@@ -1115,50 +1212,54 @@ export default class AITitleAssistant extends Plugin {
         if (!blockId) {
             return undefined;
         }
+        if (this.activeDocument?.blockId === blockId) {
+            return this.activeDocument;
+        }
+        const resolved = await this.fetchDocumentFromBreadcrumb(blockId);
+        if (resolved) {
+            this.activeDocument = resolved;
+            this.lastActiveRootId = resolved.id;
+        }
+        return resolved;
+    }
+
+    private async fetchDocumentFromBreadcrumb(blockId: string): Promise<ResolvedDocument | undefined> {
         try {
-            const breadcrumb = await this.fetchPostAsync<Array<{id: string; name: string; type: string}>>("/api/block/getBlockBreadcrumb", {
+            const breadcrumb = await this.fetchPostAsync<BlockBreadcrumbItem[]>("/api/block/getBlockBreadcrumb", {
                 id: blockId,
                 excludeTypes: []
             });
             const docEntry = breadcrumb?.find((item) => item.type === "NodeDocument") ?? breadcrumb?.[0];
-            if (docEntry?.id) {
-                // 尝试获取完整文档路径
-                let docPath = docEntry.name ?? "";
-                try {
-                    const docInfo = await this.fetchPostAsync<{box: string; path: string; hPath: string}>("/api/filetree/getDoc", {
-                        id: docEntry.id,
-                        mode: 0,
-                        size: 0
-                    });
-                    // 优先使用 hPath (人类可读路径)，其次 path
-                    docPath = docInfo?.hPath || docInfo?.path || docEntry.name || "";
-                } catch (err) {
-                    console.warn("Failed to fetch doc info, using breadcrumb name", err);
-                    docPath = docEntry.name || "";
-                }
-                
-                const resolved: ResolvedDocument = {
-                    id: docEntry.id,
-                    path: docPath,
-                    blockId
-                };
-                this.lastActiveRootId = docEntry.id;
-                this.activeDocument = resolved;
-                return resolved;
+            if (!docEntry?.id) {
+                return undefined;
             }
-        } catch (error) {
-            console.warn("Failed to resolve active document", error);
-        }
-        if (editor?.protyle?.block?.rootID) {
-            const fallback: ResolvedDocument = {
-                id: editor.protyle.block.rootID,
-                path: this.activeDocument?.path,
+            // 从面包屑构建完整路径（排除文档本身）
+            const pathParts = breadcrumb
+                ?.filter((item) => item.type !== "NodeDocument" && item.name)
+                .map((item) => item.name) ?? [];
+            const fullPath = pathParts.length > 0 ? pathParts.join("/") : "";
+            // 获取文档详细信息（包括原标题）
+            let docTitle = "";
+            let docPath = fullPath;
+            try {
+                const docInfo = await this.fetchPostAsync<{rootID: string; name: string; hPath: string}>("/api/block/getDocInfo", {id: docEntry.id});
+                docTitle = docInfo?.name ?? "";
+                if (docInfo?.hPath) {
+                    docPath = docInfo.hPath;
+                }
+            } catch {
+                docTitle = docEntry.name ?? "";
+            }
+            return {
+                id: docEntry.id,
+                path: docPath,
+                title: docTitle,
                 blockId
             };
-            this.activeDocument = fallback;
-            return fallback;
+        } catch (error) {
+            console.warn("Failed to fetch block breadcrumb", error);
+            return undefined;
         }
-        return undefined;
     }
 
     private resolveProviderOrder() {

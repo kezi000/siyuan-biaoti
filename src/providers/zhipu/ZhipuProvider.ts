@@ -9,20 +9,25 @@ export class ZhipuProvider implements LLMProvider {
     async generateTitle(options: ProviderGenerateOptions): Promise<string> {
         const config = this.getConfig(options.config);
         ensureApiKey(config, this.id);
+        const requestBody: Record<string, any> = {
+            model: config.model,
+            messages: [
+                {role: "system", content: options.systemPrompt},
+                {role: "user", content: options.prompt}
+            ],
+            temperature: options.temperature,
+            top_p: options.topP,
+            max_tokens: options.maxTokens,
+            stream: false
+        };
+        // GLM 关闭思考模式: thinking: {type: "disabled"}
+        if (options.disableThinking) {
+            requestBody.thinking = {type: "disabled"};
+        }
         const response = await fetch(`${config.baseUrl}/chat/completions`, {
             method: "POST",
             headers: this.buildHeaders(config),
-            body: JSON.stringify({
-                model: config.model,
-                messages: [
-                    {role: "system", content: options.systemPrompt},
-                    {role: "user", content: options.prompt}
-                ],
-                temperature: options.temperature,
-                top_p: options.topP,
-                max_tokens: options.maxTokens,
-                stream: false
-            }),
+            body: JSON.stringify(requestBody),
             signal: options.abortSignal
         });
         const data = await response.json().catch(() => ({}));

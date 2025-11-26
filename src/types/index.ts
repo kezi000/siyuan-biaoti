@@ -49,6 +49,7 @@ export interface TitleConfig {
     contextStrategy: ContextStrategy;
     contextMaxChars: number;
     promptTemplate: string;
+    disableThinking: boolean;
 }
 
 export interface ProviderOption {
@@ -71,4 +72,5 @@ export interface GenerateTitleParams {
     topP: number;
     maxTokens: number;
     abortSignal?: AbortSignal;
+    disableThinking?: boolean;
 }

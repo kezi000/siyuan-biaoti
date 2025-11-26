@@ -2,23 +2,39 @@
   &__dialog {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
   }
 
-  &__hint {
-    font-size: 0.9rem;
-    color: var(--b3-theme-on-surface-light);
-  }
-
-  &__doc-path {
-    font-size: 0.85rem;
-    color: var(--b3-theme-on-surface);
-    font-weight: 500;
+  &__doc-info {
     background: var(--b3-theme-surface-lighter);
-    border-radius: 4px;
-    padding: 4px 8px;
-    margin-bottom: 8px;
-    max-height: 3.2em;
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__doc-info-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  &__doc-info-label {
+    color: var(--b3-theme-on-surface-light);
+    flex-shrink: 0;
+    min-width: 48px;
+
+    &::after {
+      content: ":";
+    }
+  }
+
+  &__doc-info-value {
+    color: var(--b3-theme-on-surface);
+    word-break: break-all;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
@@ -26,25 +42,49 @@
     -webkit-box-orient: vertical;
   }
 
+  &__doc-info-id {
+    font-family: var(--b3-font-family-code);
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+  }
+
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__section-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: 500;
+  }
+
   &__preview {
     padding: 12px 16px;
     border-radius: 6px;
     border: 1px solid var(--b3-border-color);
     background-color: var(--b3-theme-background-light);
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.5;
     word-break: break-word;
   }
 
   &__actions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: 8px;
+    position: relative;
   }
 
-  &__button {
-    min-width: 120px;
+  &__btn-apply {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 28px;
+    font-size: 15px;
+    font-weight: 600;
   }
 
   &__api-row {
