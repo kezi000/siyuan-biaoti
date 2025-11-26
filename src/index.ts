@@ -29,11 +29,7 @@ import {RetryHandler} from "./providers/base/RetryHandler";
 const STORAGE_KEY = "ai-title-assistant";
 
 const DEFAULT_PROMPT = [
-    "Read the following content and craft the most compelling title.",
-    "Keep the language as {{language}} with a {{tone}} tone.",
-    "Return the title only without extra explanation.",
-    "关闭思考模式,仅回复标题,务必简明精炼.",
-    "",
+    "Generate a concise title and prohibit the use of modifiers",
     "{{content}}"
 ].join("\n");
 
