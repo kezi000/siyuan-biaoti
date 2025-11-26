@@ -1,6 +1,6 @@
 {
   "name": "siyuan-biaoti",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "SiYuan plugin that generates document titles via OpenAI-compatible models",
   "main": "src/index.ts",
   "scripts": {

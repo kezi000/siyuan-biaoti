@@ -32,7 +32,7 @@ const DEFAULT_PROMPT = [
     "Read the following content and craft the most compelling title.",
     "Keep the language as {{language}} with a {{tone}} tone.",
     "Return the title only without extra explanation.",
-    "仅回复标题,务必简明精炼.",
+    "关闭思考模式,仅回复标题,务必简明精炼.",
     "",
     "{{content}}"
 ].join("\n");
