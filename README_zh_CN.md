@@ -1,4 +1,4 @@
-﻿[English](README.md)
+﻿[English](https://github.com/kezi000/siyuan-biaoti/blob/main/README.md)
 
 # AI 标题助理
 
@@ -62,7 +62,7 @@ AI 标题助理让你在思源笔记中一键调用大模型生成优质标题�
 
 - pnpm run dev：开发模式；pnpm run build：生成发布用 package.zip。
 - pnpm run lint：在提交前执行 ESLint。
-- 参阅 [docs/DEVELOPMENT_PLAN.md]( https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md ) 获取流程、架构与测试建议。
+- 参阅 [docs/DEVELOPMENT_PLAN.md](https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md) 获取流程、架构与测试建议。
 
 ## 隐私声明
 

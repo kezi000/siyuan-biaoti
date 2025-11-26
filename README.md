@@ -1,4 +1,4 @@
-﻿[中文说明](README_zh_CN.md)
+﻿[中文说明](https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md)
 
 # AI Title Assistant
 
@@ -62,7 +62,7 @@ AI Title Assistant lets you trigger large language models directly inside SiYuan
 
 - pnpm run dev: development mode with incremental builds. pnpm run build: produces package.zip for release.
 - pnpm run lint: run ESLint prior to submitting changes.
-- See [docs/DEVELOPMENT_PLAN.md]( https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md ) for process, architecture, and testing tips.
+- See [docs/DEVELOPMENT_PLAN.md](https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md) for process, architecture, and testing tips.
 
 ## Privacy
 
