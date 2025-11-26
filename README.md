@@ -1,4 +1,4 @@
-﻿[中文说明](https://github.com/kezi000/siyuan-biaoti/blob/main/docs/DEVELOPMENT_PLAN.md)
+﻿[中文说明](https://github.com/kezi000/siyuan-biaoti/blob/main/README_zh_CN.md)
 
 # AI Title Assistant
 
